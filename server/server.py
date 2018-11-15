@@ -18,7 +18,7 @@ import requests
 try:
     app = Bottle()
 
-    board = "nothing" 
+    board = {"0":"nothing",}
 
 
     # ------------------------------------------------------------------------------------------------------
@@ -28,7 +28,7 @@ try:
         global board, node_id
         success = False
         try:
-            board = element
+            board[str(entry_sequence)] = element
             success = True
         except Exception as e:
             print e
@@ -93,13 +93,13 @@ try:
     @app.route('/')
     def index():
         global board, node_id
-        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted({"0":board,}.iteritems()), members_name_string='YOUR NAME')
+        return template('server/index.tpl', board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()), members_name_string='YOUR NAME')
 
     @app.get('/board')
     def get_board():
         global board, node_id
         print board
-        return template('server/boardcontents_template.tpl',board_title='Vessel {}'.format(node_id), board_dict=sorted({"0":board,}.iteritems()))
+        return template('server/boardcontents_template.tpl',board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
     def client_add_received():
@@ -108,7 +108,7 @@ try:
         global board, node_id
         try:
             new_entry = request.forms.get('entry')
-            add_new_element_to_store(None, new_entry) # you might want to change None here
+            add_new_element_to_store(len(board), new_entry) # you might want to change None here
             # you should propagate something
             # Please use threads to avoid blocking
             #thread = Thread(target=???,args=???)

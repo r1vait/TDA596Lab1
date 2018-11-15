@@ -108,10 +108,12 @@ try:
         global board, node_id
         try:
             new_entry = request.forms.get('entry')
-            add_new_element_to_store(len(board), new_entry) # you might want to change None here
+            entryid = len(board)
+            add_new_element_to_store(entryid, new_entry) # you might want to change None here
             # you should propagate something
             # Please use threads to avoid blocking
-            #thread = Thread(target=???,args=???)
+            thread = Thread(target=propagate_to_vessels,args=('/propagate/add/{}'.format(entryid),new_entry))
+            thread.run()
             # you should create the thread as a deamon
             return True
         except Exception as e:
@@ -125,7 +127,8 @@ try:
 
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
-        # todo
+        if action == 'add':
+        	add_new_element_to_store(element_id,request.body.read(),True)
         pass
         
     # ------------------------------------------------------------------------------------------------------

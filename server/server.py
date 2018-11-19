@@ -38,7 +38,7 @@ try:
         global board, node_id
         success = False
         try:
-            board = modified_element
+            board[str(entry_sequence)] = modified_element
             success = True
         except Exception as e:
             print e
@@ -48,7 +48,7 @@ try:
         global board, node_id
         success = False
         try:
-            board = ""
+            board[str(entry_sequence)] = ""
             success = True
         except Exception as e:
             print e
@@ -123,6 +123,15 @@ try:
     @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
         # todo
+        delete = request.forms.get('delete')
+        print(delete)
+        if delete == '0':
+        	print("condition is verified")
+        	element =request.forms.get('entry')
+        	print (element)
+        	modify_element_in_store(element_id,element)
+       	elif delete =='1':
+       		delete_element_from_store(element_id)
         pass
 
     @app.post('/propagate/<action>/<element_id>')

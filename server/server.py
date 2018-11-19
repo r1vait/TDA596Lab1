@@ -130,14 +130,22 @@ try:
         	element =request.forms.get('entry')
         	print (element)
         	modify_element_in_store(element_id,element)
+        	thread = Thread(target=propagate_to_vessels,args=('/propagate/modify/{}'.format(element_id),element))
+        	thread.run()
        	elif delete =='1':
        		delete_element_from_store(element_id)
+       		thread = Thread(target=propagate_to_vessels,args=('/propagate/delete/{}'.format(element_id),""))
+       		thread.run()
         pass
 
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
         if action == 'add':
         	add_new_element_to_store(element_id,request.body.read(),True)
+        elif action == 'modify':
+        	modify_element_in_store(element_id,request.body.read(),True)
+        elif action == 'delete':
+        	delete_element_from_store(element_id,True)
         pass
         
     # ------------------------------------------------------------------------------------------------------

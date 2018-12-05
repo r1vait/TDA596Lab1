@@ -12,6 +12,7 @@ import json
 import argparse
 from threading import Thread
 from bottle import Bottle, run, request, template
+from random import randint
 import requests
 # ------------------------------------------------------------------------------------------------------
 try:
@@ -135,6 +136,14 @@ try:
                 success = contact_vessel(vessel_ip, path, payload, req)
                 if not success:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
+
+    def next_address():
+    	return vessel_list[(node_id+1)%len(vessel_list)]
+
+
+    def start_leader_election():
+    	#contact next vessel with start id
+    	contact_vessel(next_address,"/election/electing",{'start_id':node_id,'highest_value':randomized_value,'winning_id':node_id})
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
     # ------------------------------------------------------------------------------------------------------
@@ -161,10 +170,10 @@ try:
         global board, node_id
         try:
             new_entry = request.forms.get('entry')
-            max_sequence = max(board,key=int)
-            new_sequence = max_sequence+1
-            add_new_element_to_store(new_sequence, new_entry) 
-            thread=Thread(target=propagate_to_vessels,args=('/propagate/add/{}'.format(new_sequence),new_entry))
+            #max_sequence = max(board,key=int)
+            #new_sequence = max_sequence+1
+            #add_new_element_to_store(new_sequence, new_entry) 
+            thread=Thread(target=contact_vessel,args=(leader_ip,'/leader/add/0',new_entry))
             thread.deamon= True
             thread.run()
             return True
@@ -187,16 +196,16 @@ try:
 		"""
         try:
             delete=request.forms.get('delete')
-            if delete=='0':
+            if delete=='0': #modify
                 current_element=request.forms.get('entry')
-                modify_element_in_store(element_id,current_element)
-                thread = Thread(target=propagate_to_vessels,args=('/propagate/modify/{}'.format(element_id),current_element))
+                #modify_element_in_store(element_id,current_element)
+                thread = Thread(target=contact_vessel,args=(leader_ip,'/leader/modify/{}'.format(element_id),current_element))
                 thread.deamon= True
                 thread.run()
                 return True
             elif delete=='1':
-                delete_element_from_store(element_id)
-                thread = Thread(target=propagate_to_vessels,args=('/propagate/delete/{}'.format(element_id),""))
+                #delete_element_from_store(element_id)
+                thread = Thread(target=propagate_to_vessels,args=(leader_ip,'/leader/delete/{}'.format(element_id),""))
                 thread.deamon= True 
                 thread.run()
                 return True
@@ -231,13 +240,69 @@ try:
         except Exception as e:
             print e
         return False
-        
+    
+    @app.post('/election/electing')
+    def election_vote():
+    	start_id = request.forms.get('start_id')
+    	highest_value = request.forms.get('highest_value')
+    	winning_id = request.forms.get('winning_id')
+    	if start_id == node_id:
+    		#win the election
+    		#stop the election
+    		thread = Thread(target=propagate_to_vessels,args=('/election/winner/',{'winning_id':winning_id}))
+            thread.deamon= True 
+            thread.run()
+    	else :
+    		if highest_value < randomized_value:
+    			highest_value = randomized_value
+    			winning_id = node_id
+       		#continue election
+       		contact_vessel(next_address,"/election/electing",{'start_id':start_id,'highest_value':highest_value,'winning_id':winning_id})
+
+    @app.post('/election/winner')
+    def election_winner():
+  		leader_ip = '10.1.0.{}'.format(request.forms.get('winning_id'))
+
+
+
+
+  	@app.post('/leader/<action>/<element_id>')
+    def call_received(action,element_id):
+
+    	try:
+    		new_entry = None
+    		if action == 'add':
+    			#leader will add to the board and then propagate it to the other vessels
+    			new_entry = request.body.read()
+    			max_sequence = max(board,key=int)
+            	element_id = max_sequence+1
+            	add_new_element_to_store(element_id, new_entry)
+            	
+    		if action == 'modify':
+    			new_entry = request.body.read()
+    			modify_element_in_store(element_id,current_element)
+    		if action == 'delete':
+    			delete_element_from_store(element_id)
+
+
+    		thread=Thread(target=propagate_to_vessels,args=('/propagate/{}/{}'.format(action,element_id),new_entry))
+            thread.deamon= True
+            thread.run()
+
+    	except Exception as e:
+    		print e
+    	return False
+    	#this route is used when the leader receives an action from another vessel
+    	#the leader receives the actions through this route and then propagate them to the other vessels using the regular route
+
+   		
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
     # Execute the code
     def main():
-        global vessel_list, node_id, app
+        global vessel_list, node_id, app, leader_ip, randomized_value
+        randomized_value = randint(0,1000)
         port = 80
         parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
         parser.add_argument('--id', nargs='?', dest='nid', default=1, type=int, help='This server ID')
@@ -248,7 +313,11 @@ try:
         # We need to write the other vessels IP, based on the knowledge of their number
         for i in range(1, args.nbv+1):
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
-
+        try:
+    		start_leader_election()
+        	pass
+        except Exception as e:
+        	print e
         try:
             run(app, host=vessel_list[str(node_id)], port=port)
         except Exception as e:

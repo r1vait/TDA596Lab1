@@ -220,7 +220,7 @@ try:
 				return True
 			elif delete=='1':
 				#delete_element_from_store(element_id)
-				thread = Thread(target=propagate_to_vessels,args=(leader_ip,'/leader/delete/{}'.format(element_id),""))
+				thread = Thread(target=contact_vessel,args=(leader_ip,'/leader/delete/{}'.format(element_id),""))
 				thread.daemon= True 
 				thread.start()
 				return True
@@ -272,9 +272,9 @@ try:
 			thread.start()
 		else:
 			print("highest value is : {}, current value is : {}".format(highest_value,randomized_value))
-			if highest_value < randomized_value:
+			if int(highest_value) < randomized_value:
 				print("updating value")
-				highest_value = randomized_value
+				highest_value = str(randomized_value)
 				winning_id = node_id
 	   		#continue election
 	   		thread = Thread(target= contact_vessel,args =(next_address(),"/election/electing",{'start_id':start_id,'highest_value':highest_value,'winning_id':winning_id}))
@@ -285,6 +285,7 @@ try:
 
 	@app.post('/election/winner')
 	def election_winner():
+		global leader_ip
   		leader_ip = '10.1.0.{}'.format(request.forms.get('winning_id'))
   		print("new leader is {}".format(leader_ip))
   		return False
@@ -302,7 +303,7 @@ try:
 				
 			if action == 'modify':
 				new_entry = request.body.read()
-				modify_element_in_store(element_id,current_element)
+				modify_element_in_store(element_id,new_entry)
 			if action == 'delete':
 				delete_element_from_store(element_id)
 

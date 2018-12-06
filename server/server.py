@@ -11,7 +11,7 @@ import time
 import json
 import argparse
 from threading import Thread
-from bottle import Bottle, run, request, template
+from bottle import Bottle, run, request, template, response
 from random import randint
 import requests
 # ------------------------------------------------------------------------------------------------------
@@ -102,15 +102,19 @@ try:
 			bool:True if successful, False otherwise.
 			
 		"""
+		print("contacting {}".format(vessel_ip))
 		success = False
 		try:
 			if 'POST' in req:
+				print("sending POST request")
 				res = requests.post('http://{}{}'.format(vessel_ip, path), data=payload)
 			elif 'GET' in req:
+				print("sending GET request")
 				res = requests.get('http://{}{}'.format(vessel_ip, path))
 			else:
 				print 'Non implemented feature!'
 			# result is in res.text or res.json()
+			print("request sent")
 			print(res.text)
 			if res.status_code == 200:
 				success = True
@@ -138,13 +142,21 @@ try:
 					print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
 	def next_address():
-		return vessel_list[(node_id+1)%len(vessel_list)]
+		return vessel_list[str(1+ (node_id)%(len(vessel_list)))]
 
 
 	def start_leader_election():
 		#contact next vessel with start id
-		print("starting the election , next adress : ",next_address())
-		contact_vessel(next_address(),"/election/electing",{'start_id':node_id,'highest_value':randomized_value,'winning_id':node_id})
+		time.sleep(10)
+		try:
+
+			print("starting the election... ")
+			thread = Thread(target=contact_vessel,args=(next_address(),"/election/electing",{'start_id':node_id,'highest_value':randomized_value,'winning_id':node_id}))
+			#thread.daemon = True
+			thread.start()
+		except Exception as e:
+			print e
+		return True
 	# ------------------------------------------------------------------------------------------------------
 	# ROUTES
 	# ------------------------------------------------------------------------------------------------------
@@ -157,14 +169,8 @@ try:
 	@app.get('/board')
 	def get_board():
 		global board, node_id
+		
 		print board
-		if(leader_ip==None):
-			try:
-				time.sleep(10)
-				start_leader_election()
-				pass
-			except Exception as e:
-				print e
 		return template('server/boardcontents_template.tpl',board_title='Vessel {}, Random value : {}, Current leader: {}'.format(node_id,randomized_value,leader_ip), board_dict=sorted(board.iteritems()))
 	
 	@app.post('/board')
@@ -183,8 +189,8 @@ try:
 			#new_sequence = max_sequence+1
 			#add_new_element_to_store(new_sequence, new_entry) 
 			thread=Thread(target=contact_vessel,args=(leader_ip,'/leader/add/0',new_entry))
-			thread.deamon= True
-			thread.run()
+			thread.daemon= True
+			thread.start()
 			return True
 		except Exception as e:
 			print e
@@ -209,14 +215,14 @@ try:
 				current_element=request.forms.get('entry')
 				#modify_element_in_store(element_id,current_element)
 				thread = Thread(target=contact_vessel,args=(leader_ip,'/leader/modify/{}'.format(element_id),current_element))
-				thread.deamon= True
-				thread.run()
+				thread.daemon= True
+				thread.start()
 				return True
 			elif delete=='1':
 				#delete_element_from_store(element_id)
 				thread = Thread(target=propagate_to_vessels,args=(leader_ip,'/leader/delete/{}'.format(element_id),""))
-				thread.deamon= True 
-				thread.run()
+				thread.daemon= True 
+				thread.start()
 				return True
 		except Exception as e:
 			print e
@@ -252,25 +258,36 @@ try:
 	
 	@app.post('/election/electing')
 	def election_vote():
+		print("election received, next adress : {}".format(next_address()))
+		#response.abort()
 		start_id = request.forms.get('start_id')
 		highest_value = request.forms.get('highest_value')
 		winning_id = request.forms.get('winning_id')
-		if start_id == node_id:
+		if start_id == str(node_id):
 			#win the election
 			#stop the election
-			thread = Thread(target=propagate_to_vessels,args=('/election/winner/',{'winning_id':winning_id}))
-			thread.deamon=True
-			thread.run()
+			print("the winner has been chosen")
+			thread = Thread(target=propagate_to_vessels,args=('/election/winner',{'winning_id':winning_id}))
+			thread.daemon=True
+			thread.start()
 		else:
+			print("highest value is : {}, current value is : {}".format(highest_value,randomized_value))
 			if highest_value < randomized_value:
+				print("updating value")
 				highest_value = randomized_value
 				winning_id = node_id
 	   		#continue election
-	   		contact_vessel(next_address(),"/election/electing",{'start_id':start_id,'highest_value':highest_value,'winning_id':winning_id})
+	   		thread = Thread(target= contact_vessel,args =(next_address(),"/election/electing",{'start_id':start_id,'highest_value':highest_value,'winning_id':winning_id}))
+	   		thread.daemon = True
+	   		thread.start()
+	   		print("server contacted")
+	   	return False
 
 	@app.post('/election/winner')
 	def election_winner():
   		leader_ip = '10.1.0.{}'.format(request.forms.get('winning_id'))
+  		print("new leader is {}".format(leader_ip))
+  		return False
 
 	@app.post('/leader/<action>/<element_id>')
 	def call_received(action,element_id):
@@ -291,8 +308,8 @@ try:
 
 
 			thread=Thread(target=propagate_to_vessels,args=('/propagate/{}/{}'.format(action,element_id),new_entry))
-			thread.deamon= True
-			thread.run()
+			#thread.daemon= True
+			thread.start()
 
 		except Exception as e:
 			print e
@@ -319,9 +336,14 @@ try:
 		vessel_list = dict()
 		leader_ip= None
 		# We need to write the other vessels IP, based on the knowledge of their number
+		
 		for i in range(1, args.nbv+1):
 			vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
 		
+		thread=Thread(target=start_leader_election)
+		thread.daemon= True
+		thread.start()
+
 		try:
 			run(app, host=vessel_list[str(node_id)], port=port)
 		except Exception as e:

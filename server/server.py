@@ -10,7 +10,7 @@ import sys
 import time
 import json
 import argparse
-from threading import Thread
+from threading import Thread, Timer
 from bottle import Bottle, run, request, template, response
 from random import randint
 import requests
@@ -102,19 +102,22 @@ try:
 			bool:True if successful, False otherwise.
 			
 		"""
-		print("contacting {}".format(vessel_ip))
+		#print("contacting {}".format(vessel_ip))
+		timer = Timer(10.0,vessel_timeout,args=[vessel_ip])
 		success = False
 		try:
+			timer.start()
 			if 'POST' in req:
-				print("sending POST request")
+				#print("sending POST request")
 				res = requests.post('http://{}{}'.format(vessel_ip, path), data=payload)
 			elif 'GET' in req:
-				print("sending GET request")
+				#print("sending GET request")
 				res = requests.get('http://{}{}'.format(vessel_ip, path))
 			else:
 				print 'Non implemented feature!'
 			# result is in res.text or res.json()
-			print("request sent")
+			timer.cancel()
+			#print("request sent")
 			print(res.text)
 			if res.status_code == 200:
 				success = True
@@ -142,17 +145,35 @@ try:
 					print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
 	def next_address():
-		return vessel_list[str(1+ (node_id)%(len(vessel_list)))]
+		keylist = vessel_list.keys()
+		currentkey = keylist.index(str(node_id))
+		return vessel_list[keylist[(currentkey+1)%len(keylist)]]
+		#return vessel_list[str(1+ (node_id)%(len(vessel_list)))]
+		#TODO : edit this so it works even when some elements have been removed from the list
 
+	def remove_vessel(vessel_ip):
+		global vessel_list
+		vessel_list = {key:val for key , val in vessel_list.items() if val != vessel_ip}
+
+	def vessel_timeout(vessel_ip):
+		#actions to do when the leader times out
+		#should remove the leader from the list of vessels, propagate it and start a new election
+		remove_vessel(vessel_ip)
+		thread = Thread(target=propagate_to_vessels,args=('/timeout',{'ip':vessel_ip}))
+		thread.daemon=True
+		thread.start()
+		if vessel_ip == leader_ip:
+			start_leader_election()
+		
 
 	def start_leader_election():
 		#contact next vessel with start id
-		time.sleep(10)
+		time.sleep(5)
 		try:
 
 			print("starting the election... ")
 			thread = Thread(target=contact_vessel,args=(next_address(),"/election/electing",{'start_id':node_id,'highest_value':randomized_value,'winning_id':node_id}))
-			#thread.daemon = True
+			thread.daemon = True
 			thread.start()
 		except Exception as e:
 			print e
@@ -266,6 +287,8 @@ try:
 		if start_id == str(node_id):
 			#win the election
 			#stop the election
+			global leader_ip 
+			leader_ip = '10.1.0.{}'.format(winning_id)
 			print("the winner has been chosen")
 			thread = Thread(target=propagate_to_vessels,args=('/election/winner',{'winning_id':winning_id}))
 			thread.daemon=True
@@ -317,7 +340,13 @@ try:
 		return False
 		#this route is used when the leader receives an action from another vessel
 		#the leader receives the actions through this route and then propagate them to the other vessels using the regular route
+	@app.post('/timeout')
+	def timeout():
 
+		timeout_ip = request.forms.get('ip')
+		print("timeout : {}".format(timeout_ip))
+		remove_vessel(timeout_ip)
+		return False
    		
 	# ------------------------------------------------------------------------------------------------------
 	# EXECUTION

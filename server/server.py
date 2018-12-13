@@ -332,7 +332,7 @@ try:
 
 
 			thread=Thread(target=propagate_to_vessels,args=('/propagate/{}/{}'.format(action,element_id),new_entry))
-			#thread.daemon= True
+			thread.daemon= True
 			thread.start()
 
 		except Exception as e:

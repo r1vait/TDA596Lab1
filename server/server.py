@@ -145,22 +145,26 @@ try:
 					print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
 	def next_address():
-		"""
-		returns the address of the next vessel in the election ring
+		"""Returns the address of the next vessel in the election ring
+
+		Returns:
+			str: the IP address of the next server in the ring 
+
 		"""
 		keylist = vessel_list.keys()
 		currentkey = keylist.index(str(node_id))
 		return vessel_list[keylist[(currentkey+1)%len(keylist)]]
-		#return vessel_list[str(1+ (node_id)%(len(vessel_list)))]
-		#TODO : edit this so it works even when some elements have been removed from the list
-
+	
 	def remove_vessel(vessel_ip):
+		"""Removes a failed server from vessel_list
+
+		"""
 		global vessel_list
 		vessel_list = {key:val for key , val in vessel_list.items() if val != vessel_ip}
 
 	def vessel_timeout(vessel_ip):
-		"""actions to do when a vessel times out
-		should remove the vessel from the list of vessels, propagate it and start a new election if needed
+		"""Propagates the ip of the failed server to the other servers
+
 		"""
 		remove_vessel(vessel_ip)
 		thread = Thread(target=propagate_to_vessels,args=('/timeout',{'ip':vessel_ip}))
@@ -171,7 +175,9 @@ try:
 		
 
 	def start_leader_election():
-		#contact next vessel with start id
+		"""Starts the leader election algorithm 
+
+		"""
 		time.sleep(5)
 		try:
 
@@ -210,9 +216,6 @@ try:
 		global board, node_id
 		try:
 			new_entry = request.forms.get('entry')
-			#max_sequence = max(board,key=int)
-			#new_sequence = max_sequence+1
-			#add_new_element_to_store(new_sequence, new_entry) 
 			thread=Thread(target=contact_vessel,args=(leader_ip,'/leader/add/0',new_entry))
 			thread.daemon= True
 			thread.start()
@@ -236,15 +239,13 @@ try:
 		"""
 		try:
 			delete=request.forms.get('delete')
-			if delete=='0': #modify
+			if delete=='0': #modification
 				current_element=request.forms.get('entry')
-				#modify_element_in_store(element_id,current_element)
 				thread = Thread(target=contact_vessel,args=(leader_ip,'/leader/modify/{}'.format(element_id),current_element))
 				thread.daemon= True
 				thread.start()
 				return True
-			elif delete=='1':
-				#delete_element_from_store(element_id)
+			elif delete=='1': #Deletion
 				thread = Thread(target=contact_vessel,args=(leader_ip,'/leader/delete/{}'.format(element_id),""))
 				thread.daemon= True 
 				thread.start()
@@ -283,14 +284,10 @@ try:
 	
 	@app.post('/election/electing')
 	def election_vote():
-		'''
-			this is the route for the election ring
-			it should be used with a request form which includes the id of 
-			the vessel which started the election, the highest random value and the id of the current winner
+		"""Elects the leader
 
-		'''
+		"""
 		print("election received, next adress : {}".format(next_address()))
-		#response.abort()
 		start_id = request.forms.get('start_id')
 		highest_value = request.forms.get('highest_value')
 		winning_id = request.forms.get('winning_id')
@@ -318,8 +315,8 @@ try:
 
 	@app.post('/election/winner')
 	def election_winner():
-		"""
-		This route is used to receive the result of the leader election
+		"""Sets the IP of the leader server
+
 		"""
 		global leader_ip
   		leader_ip = '10.1.0.{}'.format(request.forms.get('winning_id'))
@@ -328,10 +325,11 @@ try:
 
 	@app.post('/leader/<action>/<element_id>')
 	def call_received(action,element_id):
-		'''this route is used when a vessel transmits an action to the leader
-		the leader then propagates the action		
+		"""Applies the changes on the leader and then propages them to the other servers
 
-		'''
+		Returns: 
+			bool: True if successfull, False otherwise.
+		"""
 		try:
 			new_entry = None
 			if action == 'add':
@@ -340,14 +338,11 @@ try:
 				max_sequence = max(board,key=int)
 				element_id = max_sequence+1
 				add_new_element_to_store(element_id, new_entry)
-				
 			if action == 'modify':
 				new_entry = request.body.read()
 				modify_element_in_store(element_id,new_entry)
 			if action == 'delete':
 				delete_element_from_store(element_id)
-
-
 			thread=Thread(target=propagate_to_vessels,args=('/propagate/{}/{}'.format(action,element_id),new_entry))
 			thread.daemon= True
 			thread.run() # Thread.run() is not Thread.start(), it does not do a separate thread
@@ -359,7 +354,9 @@ try:
 		#the leader receives the actions through this route and then propagate them to the other vessels using the regular route
 	@app.post('/timeout')
 	def timeout():
-		#used when a vessel does not respond to a contact
+		"""Removes the ip of the failed server fron the vessel_list dictionary on the other servers
+
+		"""
 		timeout_ip = request.forms.get('ip')
 		print("timeout : {}".format(timeout_ip))
 		remove_vessel(timeout_ip)
@@ -372,9 +369,7 @@ try:
 	def main():
 		global vessel_list, node_id, app, leader_ip, randomized_value
 		randomized_value = randint(0,1000)
-		#print("randomized_value" + randomized_value)
 		port = 80
-
 		parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
 		parser.add_argument('--id', nargs='?', dest='nid', default=1, type=int, help='This server ID')
 		parser.add_argument('--vessels', nargs='?', dest='nbv', default=1, type=int, help='The total number of vessels present in the system')

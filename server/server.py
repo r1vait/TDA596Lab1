@@ -103,7 +103,7 @@ try:
 			
 		"""
 		#print("contacting {}".format(vessel_ip))
-		timer = Timer(10.0,vessel_timeout,args=[vessel_ip])
+		timer = Timer(30.0,vessel_timeout,args=[vessel_ip])
 		success = False
 		try:
 			timer.start()
@@ -145,6 +145,9 @@ try:
 					print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
 	def next_address():
+		"""
+		returns the address of the next vessel in the election ring
+		"""
 		keylist = vessel_list.keys()
 		currentkey = keylist.index(str(node_id))
 		return vessel_list[keylist[(currentkey+1)%len(keylist)]]
@@ -156,8 +159,9 @@ try:
 		vessel_list = {key:val for key , val in vessel_list.items() if val != vessel_ip}
 
 	def vessel_timeout(vessel_ip):
-		#actions to do when the leader times out
-		#should remove the leader from the list of vessels, propagate it and start a new election
+		"""actions to do when a vessel times out
+		should remove the vessel from the list of vessels, propagate it and start a new election if needed
+		"""
 		remove_vessel(vessel_ip)
 		thread = Thread(target=propagate_to_vessels,args=('/timeout',{'ip':vessel_ip}))
 		thread.daemon=True
@@ -279,6 +283,12 @@ try:
 	
 	@app.post('/election/electing')
 	def election_vote():
+		'''
+			this is the route for the election ring
+			it should be used with a request form which includes the id of 
+			the vessel which started the election, the highest random value and the id of the current winner
+
+		'''
 		print("election received, next adress : {}".format(next_address()))
 		#response.abort()
 		start_id = request.forms.get('start_id')
@@ -308,6 +318,9 @@ try:
 
 	@app.post('/election/winner')
 	def election_winner():
+		"""
+		This route is used to receive the result of the leader election
+		"""
 		global leader_ip
   		leader_ip = '10.1.0.{}'.format(request.forms.get('winning_id'))
   		print("new leader is {}".format(leader_ip))
@@ -315,6 +328,10 @@ try:
 
 	@app.post('/leader/<action>/<element_id>')
 	def call_received(action,element_id):
+		'''this route is used when a vessel transmits an action to the leader
+		the leader then propagates the action		
+
+		'''
 		try:
 			new_entry = None
 			if action == 'add':
@@ -333,8 +350,8 @@ try:
 
 			thread=Thread(target=propagate_to_vessels,args=('/propagate/{}/{}'.format(action,element_id),new_entry))
 			thread.daemon= True
-			thread.start()
-
+			thread.run() # Thread.run() is not Thread.start(), it does not do a separate thread
+			return True
 		except Exception as e:
 			print e
 		return False
@@ -342,7 +359,7 @@ try:
 		#the leader receives the actions through this route and then propagate them to the other vessels using the regular route
 	@app.post('/timeout')
 	def timeout():
-
+		#used when a vessel does not respond to a contact
 		timeout_ip = request.forms.get('ip')
 		print("timeout : {}".format(timeout_ip))
 		remove_vessel(timeout_ip)
